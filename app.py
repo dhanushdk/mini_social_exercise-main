@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, g
+from flask import Flask, render_template, request, redirect, url_for, session, flash, g, abort
 from werkzeug.security import generate_password_hash, check_password_hash
 from cryptography.fernet import Fernet
 import collections
@@ -194,8 +194,8 @@ def get_personalized_contributions(user_id, limit=5):
     return scored_posts[:limit]
 
 
+
 def get_contribution_progress(user_id):
-   
     if not user_id:
         return {
             'points': 0,
@@ -204,37 +204,33 @@ def get_contribution_progress(user_id):
             'percentage': 0
         }
 
-    week_start = datetime.now() - timedelta(days=7)
+    # Calculate the start of the last seven days
+    week_start = (
+        datetime.utcnow() - timedelta(days=7)
+    ).strftime('%Y-%m-%d %H:%M:%S')
 
+    # Count posts created during the last seven days
     posts = query_db("""
         SELECT COUNT(*) AS count
         FROM posts
         WHERE user_id = ?
           AND created_at >= ?
-    """, (user_id, week_start))
+    """, (user_id, week_start), one=True)
 
     comments = query_db("""
         SELECT COUNT(*) AS count
         FROM comments
         WHERE user_id = ?
           AND created_at >= ?
-    """, (user_id, week_start))
+    """, (user_id, week_start), one=True)
 
-    reactions = query_db("""
-        SELECT COUNT(*) AS count
-        FROM reactions
-        WHERE user_id = ?
-    """, (user_id,))
-
-    post_count = posts[0]['count'] if posts else 0
-    comment_count = comments[0]['count'] if comments else 0
-    reaction_count = reactions[0]['count'] if reactions else 0
+    post_count = posts['count'] if posts else 0
+    comment_count = comments['count'] if comments else 0
 
     post_points = post_count * 3
     comment_points = comment_count * 2
-    reaction_points = reaction_count
 
-    points = post_points + comment_points + reaction_points
+    points = post_points + comment_points
 
     goal = 10
 
@@ -254,7 +250,7 @@ def get_contribution_progress(user_id):
         'remaining': remaining,
         'percentage': percentage
     }
-
+    
 def get_friend_suggestions(user_id, limit=5):
 
     if not user_id:
